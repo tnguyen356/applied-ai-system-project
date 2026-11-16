@@ -1,0 +1,61 @@
+# System Architecture
+
+Data flows left-to-right/top-to-bottom through four stages: a data layer that builds the
+song catalog, an **input** (either free text or a fixed profile), the **agent**'s
+plan → act → check loop, and an **output** of ranked, explained recommendations. The
+green nodes at the bottom are where humans or automated tests check the AI's output —
+offline unit tests validate the agent's logic before it ships, manual exploratory testing
+against real language caught bugs the tests missed, and every recommendation ships with a
+human-readable trace and reasons instead of a bare score.
+
+Mermaid source for this diagram also lives standalone at
+[`system_architecture.mmd`](system_architecture.mmd).
+
+```mermaid
+flowchart TD
+    subgraph DATA["Data Layer"]
+        CSV[("data/songs.csv<br/>~114k Spotify tracks")]
+        LOAD["load_songs()<br/>recommender.py<br/>maps columns + derives mood<br/>from a valence/energy quadrant"]
+        CATALOG[("Song catalog (in memory)<br/>title, artist, genre, mood,<br/>energy, tempo, danceability,<br/>valence, acousticness")]
+        CSV --> LOAD --> CATALOG
+    end
+
+    subgraph INPUT["Input"]
+        FREETEXT["Free-text request<br/>e.g. 'something chill'<br/>(main.py --chat)"]
+        PROFILE["Fixed preference profile<br/>(PROFILES dict in main.py)"]
+    end
+
+    subgraph AGENT["Agent: plan -> act -> check  (agent.py)"]
+        PLAN["PLAN: interpret_request()<br/>Gemini LLM, or a deterministic<br/>keyword-fallback parser if no<br/>API key / the call fails"]
+        ACT["ACT: score_song / recommend_songs<br/>recommender.py<br/>weighted closeness scoring"]
+        CHECK{"CHECK: evaluate_recommendations()<br/>top score >= 3.0 threshold?"}
+        RETRY["RETRY (once)<br/>swap in the next fallback mood"]
+        PLAN --> ACT --> CHECK
+        CHECK -->|"no, weak match"| RETRY
+        RETRY --> ACT
+    end
+
+    OUTPUT["Output<br/>Top-k ranked songs + plain-language<br/>match reasons + plan/act/check/retry trace"]
+
+    subgraph HUMAN["Human & automated checks on AI output"]
+        TESTS["pytest: tests/test_agent.py<br/>12 offline tests validate the parser,<br/>mood inference, and retry logic<br/>BEFORE the agent is trusted"]
+        MANUAL["Manual exploratory testing<br/>(running --chat with real language)<br/>caught bugs the unit tests missed,<br/>e.g. 'chill' resolving to the wrong mood"]
+        REVIEW["Human reads the printed<br/>plan/act/check/retry trace and the<br/>per-song reasons before trusting a result<br/>(explainability, not a black box)"]
+        LOG[("logs/agent.log<br/>audit trail of every<br/>plan/act/check/retry decision")]
+    end
+
+    FREETEXT --> PLAN
+    PROFILE --> ACT
+    CATALOG --> ACT
+    CATALOG --> PLAN
+    CHECK -->|"yes, good enough"| OUTPUT
+    OUTPUT --> REVIEW
+    OUTPUT --> LOG
+    TESTS -.->|"validates agent.py logic<br/>before it ships"| AGENT
+    MANUAL -.->|"exercises the real<br/>end-to-end pipeline"| AGENT
+
+    style TESTS fill:#2e7d32,color:#ffffff
+    style MANUAL fill:#2e7d32,color:#ffffff
+    style REVIEW fill:#2e7d32,color:#ffffff
+    style LOG fill:#2e7d32,color:#ffffff
+```

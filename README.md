@@ -29,6 +29,10 @@ recommendations.
 
 ## Architecture Overview
 
+A Mermaid version of this diagram (same components, rendered on GitHub) lives at
+[`diagrams/system_architecture.md`](diagrams/system_architecture.md), with the raw
+source at [`diagrams/system_architecture.mmd`](diagrams/system_architecture.mmd).
+
 ```
 ┌───────────────────────────┐
 │  data/songs.csv            │   ~114,000 Spotify tracks
