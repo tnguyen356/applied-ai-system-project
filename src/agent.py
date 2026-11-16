@@ -54,25 +54,33 @@ MOOD_ENERGY_DEFAULTS = {
 }
 
 
-def _catalog_vocab(songs: List[Dict]) -> Tuple[List[str], List[str]]:
-    """Pulls the live set of genres/moods out of the catalog so the planner
-    never invents a label that isn't actually recommendable."""
-    genres = sorted({song["genre"] for song in songs})
-    moods = sorted({song["mood"] for song in songs})
-    return genres, moods
+def _catalog_moods(songs: List[Dict]) -> List[str]:
+    """Pulls the live set of moods out of the catalog so the planner never
+    invents a label that isn't actually recommendable."""
+    return sorted({song["mood"] for song in songs})
 
 
-def _keyword_fallback_parse(user_text: str, known_genres: List[str], known_moods: List[str]) -> Dict:
+def _clamp_optional(value, lo: float, hi: float) -> Optional[float]:
+    """Clamps value into [lo, hi] as a float, or returns None if it's missing/invalid -
+    used for tempo/danceability, which (unlike energy) have no sensible default when
+    the request doesn't imply one."""
+    if value is None:
+        return None
+    try:
+        return max(lo, min(hi, float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _keyword_fallback_parse(user_text: str, known_moods: List[str]) -> Dict:
     """Deterministic, no-API parser used when Gemini is unavailable or fails.
     Just substring-matches known catalog vocabulary against the request text."""
     text = user_text.lower()
 
-    matched_genres = sorted((g for g in known_genres if g in text), key=text.index)
     matched_moods = sorted((m for m in known_moods if m in text), key=text.index)
 
     # None means "not mentioned" - score_song treats that as no preference rather
-    # than silently guessing a real genre/mood the user never asked for.
-    genre = matched_genres[0] if matched_genres else None
+    # than silently guessing a real mood the user never asked for.
     mood = matched_moods[0] if matched_moods else None
 
     note = None
@@ -92,6 +100,20 @@ def _keyword_fallback_parse(user_text: str, known_genres: List[str], known_moods
         # Still None (true no-preference) if there's no mood to infer from either.
         energy = MOOD_ENERGY_DEFAULTS.get(mood)
 
+    if re.search(r"\b(fast|upbeat|quick|high tempo)\b", text):
+        tempo_bpm = 140.0
+    elif re.search(r"\b(slow|ballad|downtempo|slow tempo)\b", text):
+        tempo_bpm = 70.0
+    else:
+        tempo_bpm = None
+
+    if re.search(r"\b(danceable|groovy|groove|dance)\b", text):
+        danceability = 0.8
+    elif re.search(r"\b(mellow|laid.back)\b", text):
+        danceability = 0.3
+    else:
+        danceability = None
+
     if re.search(r"\b(acoustic|unplugged|stripped.down)\b", text):
         likes_acoustic = True
     elif re.search(r"\b(produced|electronic sound|synth.heavy)\b", text):
@@ -99,28 +121,23 @@ def _keyword_fallback_parse(user_text: str, known_genres: List[str], known_moods
     else:
         likes_acoustic = None
 
-    remaining_genres = [g for g in known_genres if g != genre]
     remaining_moods = [m for m in known_moods if m != mood]
 
     return {
-        "genre": genre,
         "mood": mood,
         "energy": energy,
+        "tempo_bpm": tempo_bpm,
+        "danceability": danceability,
         "likes_acoustic": likes_acoustic,
-        "fallback_genres": remaining_genres[:2],
         "fallback_moods": remaining_moods[:2],
         "note": note,
     }
 
 
-def _validate_and_clean(parsed: Dict, known_genres: List[str], known_moods: List[str]) -> Dict:
-    """Guardrail: never let a hallucinated genre/mood or malformed field through
+def _validate_and_clean(parsed: Dict, known_moods: List[str]) -> Dict:
+    """Guardrail: never let a hallucinated mood or malformed field through
     to the scorer. Anything invalid is dropped and logged."""
     clean = dict(parsed)
-
-    if clean.get("genre") not in known_genres:
-        logger.warning("Planner returned unknown genre %r, dropping it", clean.get("genre"))
-        clean["genre"] = None
 
     if clean.get("mood") not in known_moods:
         logger.warning("Planner returned unknown mood %r, dropping it", clean.get("mood"))
@@ -132,9 +149,11 @@ def _validate_and_clean(parsed: Dict, known_genres: List[str], known_moods: List
         logger.warning("Planner returned invalid energy %r, defaulting to 0.5", clean.get("energy"))
         clean["energy"] = 0.5
 
+    clean["tempo_bpm"] = _clamp_optional(clean.get("tempo_bpm"), 40.0, 220.0)
+    clean["danceability"] = _clamp_optional(clean.get("danceability"), 0.0, 1.0)
+
     clean["likes_acoustic"] = bool(clean.get("likes_acoustic", False))
 
-    clean["fallback_genres"] = [g for g in clean.get("fallback_genres", []) if g in known_genres]
     clean["fallback_moods"] = [m for m in clean.get("fallback_moods", []) if m in known_moods]
 
     note = clean.get("note")
@@ -147,31 +166,32 @@ def interpret_request(user_text: str, songs: List[Dict], client=None) -> Dict:
     """Plan step: turn free text into structured prefs, grounded in the catalog's
     actual genre/mood vocabulary. Falls back to a keyword parser if Gemini is
     unavailable or returns something unusable."""
-    known_genres, known_moods = _catalog_vocab(songs)
+    known_moods = _catalog_moods(songs)
 
     if client is None:
         logger.info("No Gemini client configured; using keyword fallback parser for request: %r", user_text)
-        return _keyword_fallback_parse(user_text, known_genres, known_moods)
+        return _keyword_fallback_parse(user_text, known_moods)
 
     prompt = f"""A user wants music recommendations. Translate their request into JSON.
-Pick values ONLY from these lists - never invent new ones:
-  genres: {known_genres}
+Pick the mood ONLY from this list - never invent a new one:
   moods: {known_moods}
 
 Return JSON matching exactly this shape:
 {{
-  "genre": "<one value from genres>",
   "mood": "<one value from moods>",
   "energy": <float 0.0-1.0; prefer an explicit energy word like 'chill' or 'intense' if
              present, otherwise infer a reasonable level from the overall mood (e.g.
              happy/euphoric/triumphant/intense ~ 0.8-0.9, playful/anxious ~ 0.65-0.7,
              moody/romantic/focused ~ 0.45-0.5, nostalgic/chill/dreamy ~ 0.3-0.4,
              relaxed/melancholic ~ 0.2-0.3)>,
+  "tempo_bpm": <float 40-220, OR null if the request doesn't clearly imply a tempo
+                (e.g. 'fast'/'upbeat'/'quick' ~ 130-150, 'slow'/'ballad' ~ 60-80)>,
+  "danceability": <float 0.0-1.0, OR null if the request doesn't clearly imply this
+                   (e.g. 'danceable'/'groovy' ~ 0.7-0.9, 'mellow'/'laid-back' ~ 0.2-0.4)>,
   "likes_acoustic": <true/false, inferred from words like 'unplugged' vs 'produced'>,
-  "fallback_genres": ["<related genres from the list above, closest first>"],
   "fallback_moods": ["<related moods from the list above, closest first>"],
   "note": "<null, UNLESS the request mixed conflicting signals (e.g. two different
-            moods, or a genre/mood combo that's in tension) - in that case, one short
+            moods, or a mood/tempo combo that's in tension) - in that case, one short
             sentence explaining which signal you prioritized and why>"
 }}
 
@@ -188,15 +208,15 @@ User request: "{user_text}"
         logger.warning(
             "Gemini plan step failed (%s: %s); falling back to keyword parser", type(exc).__name__, exc
         )
-        return _keyword_fallback_parse(user_text, known_genres, known_moods)
+        return _keyword_fallback_parse(user_text, known_moods)
 
-    cleaned = _validate_and_clean(parsed, known_genres, known_moods)
+    cleaned = _validate_and_clean(parsed, known_moods)
 
-    if cleaned["genre"] is None or cleaned["mood"] is None:
+    if cleaned["mood"] is None:
         logger.warning(
             "Planner output missing required fields after validation; falling back to keyword parser"
         )
-        return _keyword_fallback_parse(user_text, known_genres, known_moods)
+        return _keyword_fallback_parse(user_text, known_moods)
 
     logger.info("Plan step parsed request %r -> %s", user_text, cleaned)
     return cleaned
@@ -240,15 +260,11 @@ def agentic_recommend(
     trace.append({"step": "check", **check})
 
     if not check["good_enough"]:
-        fallback_genres = prefs.get("fallback_genres") or []
         fallback_moods = prefs.get("fallback_moods") or []
 
-        if fallback_genres or fallback_moods:
+        if fallback_moods:
             retry_prefs = dict(prefs)
-            if fallback_genres:
-                retry_prefs["genre"] = fallback_genres[0]
-            if fallback_moods:
-                retry_prefs["mood"] = fallback_moods[0]
+            retry_prefs["mood"] = fallback_moods[0]
 
             retry_recommendations = recommend_songs(retry_prefs, songs, k=k)
             retry_check = evaluate_recommendations(retry_recommendations)

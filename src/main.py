@@ -31,11 +31,11 @@ ENV_PATH = os.path.join(PROJECT_ROOT, ".env")
 
 
 PROFILES = {
-    "baseline": {"genre": "pop", "mood": "happy", "energy": 0.8, "likes_acoustic": False},
-    "conflicting_signals": {"genre": "metal", "mood": "sad", "energy": 0.95, "likes_acoustic": True},
-    "diverse_hiphop_anxious": {"genre": "hip-hop", "mood": "anxious", "energy": 0.70, "likes_acoustic": False},
-    "diverse_reggae_playful": {"genre": "reggae", "mood": "playful", "energy": 0.60, "likes_acoustic": False},
-    "diverse_rnb_romantic": {"genre": "r&b", "mood": "romantic", "energy": 0.52, "likes_acoustic": False},
+    "baseline": {"mood": "happy", "energy": 0.8, "tempo_bpm": 120.0, "danceability": 0.75, "likes_acoustic": False},
+    "conflicting_signals": {"mood": "melancholic", "energy": 0.95, "tempo_bpm": 170.0, "danceability": 0.3, "likes_acoustic": True},
+    "diverse_hiphop_anxious": {"mood": "anxious", "energy": 0.70, "tempo_bpm": 95.0, "danceability": 0.65, "likes_acoustic": False},
+    "diverse_reggae_euphoric": {"mood": "euphoric", "energy": 0.60, "tempo_bpm": 90.0, "danceability": 0.7, "likes_acoustic": False},
+    "diverse_rnb_romantic": {"mood": "romantic", "energy": 0.52, "tempo_bpm": 85.0, "danceability": 0.55, "likes_acoustic": False},
 }
 
 
@@ -81,13 +81,19 @@ def run_profile(name: str, user_prefs: dict, songs, k: int = 3) -> None:
 
 
 def _format_prefs(prefs: dict) -> str:
-    genre = prefs.get("genre") or "unspecified"
     mood = prefs.get("mood") or "unspecified"
     energy = prefs.get("energy")
     energy_str = f"{energy:.2f}" if energy is not None else "unspecified"
+    tempo = prefs.get("tempo_bpm")
+    tempo_str = f"{tempo:.0f}bpm" if tempo is not None else "unspecified"
+    danceability = prefs.get("danceability")
+    danceability_str = f"{danceability:.2f}" if danceability is not None else "unspecified"
     likes_acoustic = prefs.get("likes_acoustic")
     acoustic = "unspecified" if likes_acoustic is None else ("yes" if likes_acoustic else "no")
-    return f"genre={genre} mood={mood} energy={energy_str} acoustic={acoustic}"
+    return (
+        f"mood={mood} energy={energy_str} tempo={tempo_str} "
+        f"danceability={danceability_str} acoustic={acoustic}"
+    )
 
 
 def print_trace(trace) -> None:
