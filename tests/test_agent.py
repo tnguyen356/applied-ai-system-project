@@ -64,6 +64,21 @@ def test_keyword_fallback_infers_tempo_and_danceability_from_text():
     assert parsed_unspecified["danceability"] is None
 
 
+def test_keyword_fallback_maps_common_synonym_to_catalog_mood():
+    # "chill" isn't itself one of the catalog's mood labels, but it should still
+    # resolve to the closest real one (not fall through to None).
+    parsed = _keyword_fallback_parse("something chill please", KNOWN_MOODS + ["dreamy"])
+    assert parsed["mood"] == "dreamy"
+
+
+def test_keyword_fallback_no_fallback_moods_when_mood_unresolved():
+    # With no mood word or synonym match, there's no sensible "related mood" to
+    # retry with - fallback_moods must stay empty rather than picking an arbitrary one.
+    parsed = _keyword_fallback_parse("some music please", KNOWN_MOODS)
+    assert parsed["mood"] is None
+    assert parsed["fallback_moods"] == []
+
+
 def test_validate_and_clean_drops_hallucinated_mood():
     cleaned = _validate_and_clean(
         {

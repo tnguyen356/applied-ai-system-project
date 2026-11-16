@@ -53,6 +53,17 @@ MOOD_ENERGY_DEFAULTS = {
     "sad": 0.2,
 }
 
+# Catalog moods (derived from valence/energy quadrants in recommender.py) use labels
+# like "dreamy" or "anxious" that aren't how people actually phrase a request. Maps
+# common everyday words to the closest real catalog mood, used only when the text
+# doesn't already contain one of the catalog's own mood words verbatim.
+MOOD_SYNONYMS = {
+    "dreamy": [r"\bchill\b", r"\brelax(ed|ing)?\b", r"\bcalm\b", r"\blaid.back\b"],
+    "melancholic": [r"\bsad\b", r"\bdown\b", r"\bblue\b", r"\bheartbreak(ed|ing)?\b"],
+    "anxious": [r"\bangry\b", r"\bfurious\b", r"\baggressive\b", r"\btense\b"],
+    "euphoric": [r"\bexcited\b", r"\bhype\b", r"\bpumped\b", r"\bparty\b"],
+}
+
 
 def _catalog_moods(songs: List[Dict]) -> List[str]:
     """Pulls the live set of moods out of the catalog so the planner never
@@ -82,6 +93,12 @@ def _keyword_fallback_parse(user_text: str, known_moods: List[str]) -> Dict:
     # None means "not mentioned" - score_song treats that as no preference rather
     # than silently guessing a real mood the user never asked for.
     mood = matched_moods[0] if matched_moods else None
+
+    if mood is None:
+        for candidate_mood, patterns in MOOD_SYNONYMS.items():
+            if candidate_mood in known_moods and any(re.search(p, text) for p in patterns):
+                mood = candidate_mood
+                break
 
     note = None
     if len(matched_moods) > 1:
@@ -121,7 +138,9 @@ def _keyword_fallback_parse(user_text: str, known_moods: List[str]) -> Dict:
     else:
         likes_acoustic = None
 
-    remaining_moods = [m for m in known_moods if m != mood]
+    # No point "falling back" to some other mood if we never resolved a mood to
+    # begin with - that's not a related guess, just an arbitrary pick.
+    remaining_moods = [m for m in known_moods if m != mood] if mood is not None else []
 
     return {
         "mood": mood,
