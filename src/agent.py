@@ -30,7 +30,7 @@ except ImportError:
 logger = logging.getLogger("agent")
 
 MIN_ACCEPTABLE_SCORE = 3.0  # below this, we treat the match as weak and retry once
-GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # Used only when energy isn't explicitly stated: a reasonable energy level implied
 # by the mood alone (e.g. "happy" reads as more energetic than "melancholic").
