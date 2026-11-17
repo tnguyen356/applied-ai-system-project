@@ -142,7 +142,18 @@ prints the plan/act/check/retry trace alongside the recommendations.
    Logs for every plan/act/check/retry decision are written to `logs/agent.log` (and
    printed to the console).
 
-6. Run the test suite:
+6. Run the Streamlit chat UI (`app.py`, project root):
+
+   ```bash
+   streamlit run app.py
+   ```
+
+   Same agentic plan/act/check/retry loop as `--chat`, in a browser chat window instead
+   of the terminal. The sidebar shows catalog size, whether the Gemini planner or the
+   keyword fallback is active, the live catalog mood vocabulary, and a slider for how
+   many recommendations to return; each assistant reply has a collapsible trace panel.
+
+7. Run the test suite:
 
    ```bash
    pytest
