@@ -97,6 +97,7 @@ def load_songs(csv_path: str) -> List[Dict]:
                 "valence": valence,
                 "danceability": float(row["danceability"]),
                 "acousticness": float(row["acousticness"]),
+                "spotify_url": f"https://open.spotify.com/track/{row['track_id']}",
             })
     return songs
 

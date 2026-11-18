@@ -98,6 +98,9 @@ def render_recommendations(recommendations: list) -> None:
             st.caption(f"Score: {score:.2f}")
             for reason in explanation.split("; "):
                 st.markdown(f"- {reason}")
+            spotify_url = song.get("spotify_url")
+            if spotify_url:
+                st.link_button("Open in Spotify", spotify_url)
 
 
 def main() -> None:

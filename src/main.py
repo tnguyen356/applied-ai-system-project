@@ -66,6 +66,8 @@ def print_recommendations(recommendations) -> None:
         print("   Reasons:")
         for reason in explanation.split("; "):
             print(f"     - {reason}")
+        if song.get("spotify_url"):
+            print(f"   Listen: {song['spotify_url']}")
 
 
 def run_profile(name: str, user_prefs: dict, songs, k: int = 3) -> None:
