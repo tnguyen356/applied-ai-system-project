@@ -91,13 +91,22 @@ source at [`diagrams/system_architecture.mmd`](diagrams/system_architecture.mmd)
                                     ▼
               Top-k ranked, deduped songs + plain-language match
                       reasons + Spotify links to each track
+                                    │
+                         (Streamlit UI only)
+                                    ▼
+                   ┌───────────────────────────────┐
+                   │ Playlist (browser session state) │  app.py
+                   │ per-song Add/Remove, persists      │
+                   │ across every query in the session  │
+                   └───────────────────────────────┘
 ```
 
 `src/main.py` is the entry point for both static/CLI paths: with no flags it runs the
 fixed `PROFILES` through the static path; `--chat` drives the agentic loop interactively
 and prints the plan/act/check/retry trace alongside the recommendations. `app.py`
 (`streamlit run app.py`) drives the same agentic loop through a browser chat UI instead of
-the terminal.
+the terminal, and additionally lets the user save recommendations into a playlist that
+persists across queries for the session.
 
 ---
 
@@ -254,10 +263,10 @@ honestly instead of guessing:
 
 ## Testing Summary
 
-**Automated:** 12 tests in `tests/test_agent.py` cover keyword-fallback mood/energy/tempo/
+**Automated:** 10 tests in `tests/test_agent.py` cover keyword-fallback mood/energy/tempo/
 danceability inference, mood-synonym mapping, field validation and clamping, and the
 retry loop — all against a tiny in-memory catalog so they run offline, deterministically,
-and fast (`pytest`, 12 passed).
+and fast (`pytest`, 10 passed).
 
 **What worked:** the deterministic scorer and the plan→act→check loop carried over
 cleanly once `load_songs` learned the new schema; the keyword fallback parser's structure

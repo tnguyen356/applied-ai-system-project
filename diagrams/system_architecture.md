@@ -3,11 +3,12 @@
 Data flows left-to-right/top-to-bottom through four stages: a data layer that builds the
 song catalog, an **input** (free text from the terminal or the Streamlit UI, or a fixed
 profile), the **agent**'s plan → act → check loop, and an **output** of ranked, deduped,
-explained recommendations with Spotify links. The green nodes at the bottom are where
-humans or automated tests check the AI's output — offline unit tests validate the agent's
-logic before it ships, manual exploratory testing against real language caught bugs the
-tests missed, and every recommendation ships with a human-readable trace and reasons
-instead of a bare score.
+explained recommendations with Spotify links. From there, the Streamlit UI alone lets a
+user save songs into a playlist that persists across queries in their browser session.
+The green nodes at the bottom are where humans or automated tests check the AI's output —
+offline unit tests validate the agent's logic before it ships, manual exploratory testing
+against real language caught bugs the tests missed, and every recommendation ships with a
+human-readable trace and reasons instead of a bare score.
 
 Mermaid source for this diagram also lives standalone at
 [`system_architecture.mmd`](system_architecture.mmd).
@@ -39,8 +40,10 @@ flowchart TD
 
     OUTPUT["Output<br/>Top-k ranked, deduped songs +<br/>plain-language match reasons +<br/>Spotify links + plan/act/check/retry trace"]
 
+    PLAYLIST[("Playlist (browser session state)<br/>app.py - per-song Add/Remove,<br/>persists across queries<br/>(Streamlit UI only)")]
+
     subgraph HUMAN["Human & automated checks on AI output"]
-        TESTS["pytest: test_agent.py + test_recommender.py<br/>12 offline tests validate the parser,<br/>mood inference, retry, and dedup logic<br/>BEFORE the agent is trusted"]
+        TESTS["pytest: tests/test_agent.py<br/>10 offline tests validate the parser,<br/>mood inference, and retry logic<br/>BEFORE the agent is trusted"]
         MANUAL["Manual exploratory testing<br/>(real language via --chat / app.py)<br/>caught bugs unit tests missed: 'chill'<br/>and 'sleep music' resolving to no mood,<br/>a misconfigured Gemini model, and the<br/>same track filling 2 slots in one result"]
         REVIEW["Human reads the printed<br/>plan/act/check/retry trace and the<br/>per-song reasons before trusting a result<br/>(explainability, not a black box)"]
         LOG[("logs/agent.log<br/>audit trail of every<br/>plan/act/check/retry decision")]
@@ -54,6 +57,7 @@ flowchart TD
     CHECK -->|"yes, good enough"| OUTPUT
     OUTPUT --> REVIEW
     OUTPUT --> LOG
+    OUTPUT -->|"Streamlit UI only"| PLAYLIST
     TESTS -.->|"validates agent.py/recommender.py<br/>logic before it ships"| AGENT
     MANUAL -.->|"exercises the real<br/>end-to-end pipeline"| AGENT
 
