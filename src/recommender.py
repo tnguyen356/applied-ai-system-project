@@ -159,10 +159,22 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     return score, reasons
 
 def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
-    """Scores every song against user preferences and returns the top k, highest score first."""
+    """Scores every song against user preferences and returns the top k, highest score first.
+
+    Dedupes by spotify_url (falling back to id when that's absent, e.g. in tests)
+    so the same track - duplicated across multiple genre rows in the source
+    catalog - can't occupy more than one of the top k slots."""
     scored = [(song, *score_song(user_prefs, song)) for song in songs]
     scored.sort(key=lambda item: item[1], reverse=True)
-    return [
-        (song, score, "; ".join(reasons) if reasons else "No strong matches found")
-        for song, score, reasons in scored[:k]
-    ]
+
+    results = []
+    seen = set()
+    for song, score, reasons in scored:
+        dedup_key = song.get("spotify_url") or song.get("id")
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        results.append((song, score, "; ".join(reasons) if reasons else "No strong matches found"))
+        if len(results) >= k:
+            break
+    return results
