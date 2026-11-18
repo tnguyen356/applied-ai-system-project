@@ -48,11 +48,12 @@ source at [`diagrams/system_architecture.mmd`](diagrams/system_architecture.mmd)
 ┌───────────────────────────────────┐
 │  Song dicts: title, artist, genre, │
 │  mood, energy, tempo_bpm, valence, │
-│  danceability, acousticness        │
+│  danceability, acousticness,       │
+│  spotify_url                       │
 └─────────────┬──────────────────────┘
               │
    ┌──────────┴───────────────────────────────┐
-   │ (A) Static profile path                    │ (B) Agentic chat path (--chat)
+   │ (A) Static profile path                    │ (B) Agentic chat path (--chat or app.py)
    ▼                                            ▼
 ┌───────────────────────┐          ┌─────────────────────────────────┐
 │ PROFILES dict (main.py)│          │ Free-text request, e.g. "chill"  │
@@ -75,7 +76,8 @@ source at [`diagrams/system_architecture.mmd`](diagrams/system_architecture.mmd)
                    │ score_song / recommend_songs    │  ACT — recommender.py
                    │ weighted closeness scoring:      │
                    │ mood match, energy/tempo/         │
-                   │ danceability closeness, acoustic  │
+                   │ danceability closeness, acoustic, │
+                   │ deduped by spotify_url/id          │
                    └────────────────┬──────────────────┘
                                     │
                            (agentic path only)
@@ -87,13 +89,15 @@ source at [`diagrams/system_architecture.mmd`](diagrams/system_architecture.mmd)
                    │ fallback mood, keep the better pass │
                    └────────────────┬──────────────────┘
                                     ▼
-                      Top-k ranked songs + plain-language
-                              match reasons
+              Top-k ranked, deduped songs + plain-language match
+                      reasons + Spotify links to each track
 ```
 
-`src/main.py` is the entry point for both paths: with no flags it runs the fixed
-`PROFILES` through the static path; `--chat` drives the agentic loop interactively and
-prints the plan/act/check/retry trace alongside the recommendations.
+`src/main.py` is the entry point for both static/CLI paths: with no flags it runs the
+fixed `PROFILES` through the static path; `--chat` drives the agentic loop interactively
+and prints the plan/act/check/retry trace alongside the recommendations. `app.py`
+(`streamlit run app.py`) drives the same agentic loop through a browser chat UI instead of
+the terminal.
 
 ---
 
